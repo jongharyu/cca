@@ -1,1 +1,1 @@
-# cca
+# Canonical correlation analysis methods
