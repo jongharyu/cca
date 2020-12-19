@@ -76,7 +76,9 @@ class GaussianKdeNCCA(NonparametricCCA):
             self.sigma_x = self.self_tuned_bandwidth(X)
             self.sigma_y = self.self_tuned_bandwidth(Y)
             Wx = np.exp(- self.Gx / (2 * self.sigma_x @ self.sigma_x.T))
+            Wx /= np.sqrt(self.sigma_x @ self.sigma_x.T) ** X.shape[0]
             Wy = np.exp(- self.Gy / (2 * self.sigma_y @ self.sigma_y.T))
+            Wy /= np.sqrt(self.sigma_y @ self.sigma_y.T) ** Y.shape[0]
         else:
             Wx = np.exp(- self.Gx / (2 * self.sigma_x ** 2))
             Wy = np.exp(- self.Gy / (2 * self.sigma_y ** 2))
@@ -107,6 +109,44 @@ class GaussianKdeNCCA(NonparametricCCA):
         knn_distances, _ = NearestNeighbors(n_neighbors=self.self_tuning_k + 1).fit(X.T).kneighbors(X.T)
         sigma = knn_distances[:, -1:]  # (num_samples, 1)
         return sigma
+
+
+class KnnNCCA(NonparametricCCA):
+    def __init__(self, kx=3, ky=3, kxy=3):
+        """
+        NCCA with Gaussian KDE
+        """
+        super().__init__()
+        self.kx = kx
+        self.ky = ky
+        self.kxy = kxy
+
+    def estimate_pointwise_dependence(self, X, Y):
+        N = X.shape[1]
+
+        # assume that X is of shape (feature_dim, sample_size)
+        knn_distances_x, _ = NearestNeighbors(n_neighbors=self.kx + 1).fit(X.T).kneighbors(X.T)
+        knn_distances_x = knn_distances_x[:, -1:]  # (num_samples, 1)
+
+        knn_distances_y, _ = NearestNeighbors(n_neighbors=self.ky + 1).fit(Y.T).kneighbors(Y.T)
+        knn_distances_y = knn_distances_y[:, -1:]  # (num_samples, 1)
+
+        XY = np.vstack([X, Y])  # (dim_xy, N)
+
+        # TODO: more efficient implementation?
+        XxY = np.zeros((X.shape[0] + Y.shape[0], N, N))  # (dim_xy, N, N)
+        for i in range(N):
+            for j in range(N):
+                XxY[:, i, j] = np.hstack([X[:, i], Y[:, j]])
+        XxY = XxY.reshape((-1, N**2))
+        knn_distances_xy, _ = NearestNeighbors(n_neighbors=self.kxy + 1).fit(XY.T).kneighbors(XxY.T)
+        knn_distances_xy = knn_distances_xy[:, -1:]  # (N**2, 1)
+        knn_distances_xy = knn_distances_xy.reshape((N, N))
+
+        pointwise_dependence = ((knn_distances_x ** X.shape[0]) @ (knn_distances_y ** Y.shape[0]).T) / (knn_distances_xy ** (X.shape[0] + Y.shape[0])) * \
+                               self.kxy / (self.kx * self.ky) / N
+
+        return pointwise_dependence
 
 """
 To implement:
