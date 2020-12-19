@@ -26,11 +26,11 @@ class KernelCCA:
         self.Y = Y
 
         N = X.shape[1]
-        Kx, Ky = self.construct_kernel_matrix(X, Y)
-        self.Kx, self.Ky = Kx, Ky
+        self.Kx, self.Ky = Kx, Ky = self.construct_kernel_matrix(X, Y)
 
         Tx = inv(Kx @ Kx + self.rx * np.eye(N))
         Ty = inv(Ky @ Ky + self.ry * np.eye(N))
+
         Kxy = Kx @ Ky
         R = Tx @ Kxy
         S = Ty @ Kxy.T
@@ -48,8 +48,8 @@ class KernelCCA:
         # sort eigenvectors in the descending order of eigenvalues
         # U = U[:, ::-1]
         # V = V[: ,::-1]
-        self.projections_x = Kx @ U / np.sqrt(np.sum((Kx @ U) ** 2, 0))
-        self.projections_y = Ky @ V / np.sqrt(np.sum((Ky @ V) ** 2, 0))
+        self.projections_x = (Kx @ U / np.sqrt(np.sum((Kx @ U) ** 2, 0))).T
+        self.projections_y = (Ky @ V / np.sqrt(np.sum((Ky @ V) ** 2, 0))).T
 
         return self
 
@@ -67,10 +67,10 @@ class KernelCCA:
     @staticmethod
     def eig(L):
         lambdas, V = np.linalg.eig(L)  # eigenvalues are not necessarily ordered
-        idx = np.real(lambdas).argsort()[::-1]
+        idx = lambdas.argsort()[::-1]  # sort eigenvalues in the descending order
         lambdas = np.real(lambdas)[idx]
-        V = np.real(V)[:, idx]
-        return lambdas, V
+        V = V[:, idx]
+        return lambdas, np.real(V)
 
 
 class GaussianKernelCCA(KernelCCA):
@@ -84,6 +84,11 @@ class GaussianKernelCCA(KernelCCA):
         self.Gy = construct_gram_matrix(Y)  # (n, n)
         Wx = np.exp(- self.Gx / (2 * self.sigma_x ** 2))
         Wy = np.exp(- self.Gy / (2 * self.sigma_y ** 2))
+
+        N = X.shape[1]
+        C = np.eye(N) - np.ones((N, N)) / N  # centering matrix
+        Wx = C @ Wx @ C
+        Wy = C @ Wy @ C
 
         return Wx, Wy
     
